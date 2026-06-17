@@ -1,28 +1,38 @@
 import streamlit as st
+import pandas as pd
 from graphviz import Digraph
+from datetime import datetime
 
-st.set_page_config(page_title="BPMN GMC", layout="wide")
+st.set_page_config(page_title="GMC BPMN", layout="wide")
 
 st.title("🏗️ BPMN - GMC Materiais de Construção")
 
-processo = st.selectbox(
-    "Escolha um processo:",
+# Inicializa histórico
+if "historico" not in st.session_state:
+    st.session_state.historico = []
+
+menu = st.sidebar.selectbox(
+    "Menu",
     [
-        "Recebimento de Mercadorias",
-        "Venda no Balcão"
+        "Visualizar BPMN",
+        "Novo Recebimento",
+        "Histórico"
     ]
 )
 
-dot = Digraph()
-dot.attr(rankdir="LR")
+# ================= BPMN =================
+if menu == "Visualizar BPMN":
 
-if processo == "Recebimento de Mercadorias":
+    st.header("Fluxo de Recebimento")
+
+    dot = Digraph()
+    dot.attr(rankdir="LR")
 
     dot.node("A", "Início", shape="circle")
     dot.node("B", "Receber mercadorias", shape="box")
     dot.node("C", "Conferir produtos", shape="box")
     dot.node("D", "Mercadoria correta?", shape="diamond")
-    dot.node("E", "Contatar fornecedor", shape="box")
+    dot.node("E", "Registrar divergência", shape="box")
     dot.node("F", "Etiquetar produtos", shape="box")
     dot.node("G", "Entrada no ERP", shape="box")
     dot.node("H", "Estoque ou Exposição?", shape="diamond")
@@ -31,45 +41,73 @@ if processo == "Recebimento de Mercadorias":
     dot.node("K", "Fim", shape="doublecircle")
 
     dot.edges([("A","B"),("B","C"),("C","D")])
+    dot.edge("D","E",label="Não")
+    dot.edge("E","K")
+    dot.edge("D","F",label="Sim")
+    dot.edge("F","G")
+    dot.edge("G","H")
+    dot.edge("H","I",label="Estoque")
+    dot.edge("H","J",label="Exposição")
+    dot.edge("I","K")
+    dot.edge("J","K")
 
-    dot.edge("D", "E", label="Não")
-    dot.edge("E", "K")
+    st.graphviz_chart(dot)
 
-    dot.edge("D", "F", label="Sim")
-    dot.edge("F", "G")
-    dot.edge("G", "H")
+# ================= NOVO RECEBIMENTO =================
+elif menu == "Novo Recebimento":
 
-    dot.edge("H", "I", label="Estoque")
-    dot.edge("H", "J", label="Exposição")
+    st.header("Novo Recebimento")
 
-    dot.edge("I", "K")
-    dot.edge("J", "K")
+    fornecedor = st.text_input("Fornecedor")
+    nf = st.text_input("Número da NF")
+    responsavel = st.text_input("Responsável")
 
-else:
+    conferencia = st.checkbox("Produtos conferidos")
+    etiquetado = st.checkbox("Produtos etiquetados")
+    erp = st.checkbox("Entrada no ERP realizada")
 
-    dot.node("A", "Cliente chega", shape="circle")
-    dot.node("B", "Atender cliente", shape="box")
-    dot.node("C", "Consultar estoque", shape="box")
-    dot.node("D", "Produto disponível?", shape="diamond")
-    dot.node("E", "Encomendar produto", shape="box")
-    dot.node("F", "Gerar orçamento", shape="box")
-    dot.node("G", "Cliente aprovou?", shape="diamond")
-    dot.node("H", "Emitir venda", shape="box")
-    dot.node("I", "Separar mercadoria", shape="box")
-    dot.node("J", "Fim", shape="doublecircle")
+    destino = st.selectbox(
+        "Destino",
+        ["Estoque", "Exposição"]
+    )
 
-    dot.edges([("A","B"),("B","C"),("C","D")])
+    observacoes = st.text_area("Observações")
 
-    dot.edge("D", "E", label="Não")
-    dot.edge("E", "J")
+    if st.button("Salvar Recebimento"):
 
-    dot.edge("D", "F", label="Sim")
-    dot.edge("F", "G")
+        registro = {
+            "Data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "Fornecedor": fornecedor,
+            "NF": nf,
+            "Responsável": responsavel,
+            "Conferência": conferencia,
+            "Etiquetado": etiquetado,
+            "ERP": erp,
+            "Destino": destino,
+            "Observações": observacoes
+        }
 
-    dot.edge("G", "J", label="Não")
-    dot.edge("G", "H", label="Sim")
+        st.session_state.historico.append(registro)
 
-    dot.edge("H", "I")
-    dot.edge("I", "J")
+        st.success("Recebimento salvo com sucesso!")
 
-st.graphviz_chart(dot)
+# ================= HISTÓRICO =================
+elif menu == "Histórico":
+
+    st.header("Histórico")
+
+    if len(st.session_state.historico) == 0:
+        st.info("Nenhum recebimento registrado.")
+    else:
+        df = pd.DataFrame(st.session_state.historico)
+
+        st.dataframe(df, use_container_width=True)
+
+        csv = df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            "Baixar CSV",
+            csv,
+            "historico_recebimentos.csv",
+            "text/csv"
+        )
